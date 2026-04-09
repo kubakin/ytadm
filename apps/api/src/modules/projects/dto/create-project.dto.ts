@@ -1,4 +1,4 @@
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -13,4 +13,20 @@ export class CreateProjectDto {
   @IsInt()
   @Min(1)
   targetViews: number;
+
+  @IsOptional()
+  @IsString()
+  youtubeChannelName?: string;
+
+  @IsOptional()
+  @IsString()
+  youtubeChannelDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  videoPrefix?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
 }

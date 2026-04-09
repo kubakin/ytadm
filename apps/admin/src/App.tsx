@@ -25,11 +25,49 @@ type Project = {
   name: string;
   shortDescription: string;
   youtubeChannel: string;
+  youtubeChannelName?: string;
+  youtubeChannelDescription?: string;
+  videoPrefix?: string;
   targetViews: number;
   completedViews: number;
   enabled?: boolean;
   videos: { id: string; title: string; youtubeUrl: string }[];
 };
+
+type ProjectFormFields = {
+  name: string;
+  shortDescription: string;
+  youtubeChannel: string;
+  targetViews: number;
+  youtubeChannelName: string;
+  youtubeChannelDescription: string;
+  videoPrefix: string;
+  enabled: boolean;
+};
+
+const emptyProjectForm = (): ProjectFormFields => ({
+  name: '',
+  shortDescription: '',
+  youtubeChannel: '',
+  targetViews: 100,
+  youtubeChannelName: '',
+  youtubeChannelDescription: '',
+  videoPrefix: '',
+  enabled: true,
+});
+
+function projectToFormFields(p: Project): ProjectFormFields {
+  return {
+    name: p.name,
+    shortDescription: p.shortDescription,
+    youtubeChannel: p.youtubeChannel,
+    targetViews: p.targetViews,
+    youtubeChannelName: p.youtubeChannelName ?? '',
+    youtubeChannelDescription: p.youtubeChannelDescription ?? '',
+    videoPrefix: p.videoPrefix ?? '',
+    enabled: p.enabled !== false,
+  };
+}
 
 type VideoStat = {
   id: string;
@@ -67,12 +105,8 @@ function App() {
   const [password, setPassword] = useState('admin123');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [projectForm, setProjectForm] = useState({
-    name: '',
-    shortDescription: '',
-    youtubeChannel: '',
-    targetViews: 100,
-  });
+  const [projectForm, setProjectForm] = useState<ProjectFormFields>(emptyProjectForm);
+  const [projectEditForm, setProjectEditForm] = useState<ProjectFormFields | null>(null);
   const [videoStats, setVideoStats] = useState<VideoStat[]>([]);
   const [statsProjectName, setStatsProjectName] = useState('');
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
@@ -101,6 +135,17 @@ function App() {
   useEffect(() => {
     void loadProjects();
   }, [token]);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setProjectEditForm(null);
+      return;
+    }
+    const p = projects.find((x) => x.id === selectedProjectId);
+    if (p) {
+      setProjectEditForm(projectToFormFields(p));
+    }
+  }, [selectedProjectId, projects]);
 
   useEffect(() => {
     const loadVideoStats = async () => {
@@ -187,13 +232,24 @@ function App() {
       },
       body: JSON.stringify(projectForm),
     });
-    setProjectForm({
-      name: '',
-      shortDescription: '',
-      youtubeChannel: '',
-      targetViews: 100,
+    setProjectForm(emptyProjectForm());
+    await loadProjects();
+    setSuccessMessage('Проект создан');
+  };
+
+  const saveProjectEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token || !selectedProjectId || !projectEditForm) return;
+    await fetch(`${API_URL}/admin/projects/${selectedProjectId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(projectEditForm),
     });
     await loadProjects();
+    setSuccessMessage('Проект сохранён');
   };
 
   const toggleProjectEnabled = async (project: Project, enabled: boolean) => {
@@ -385,10 +441,34 @@ function App() {
               required
             />
             <input
-              placeholder="Канал на YouTube"
+              placeholder="Канал YouTube: ссылка, @handle или id (UC…)"
               value={projectForm.youtubeChannel}
               onChange={(e) => setProjectForm((s) => ({ ...s, youtubeChannel: e.target.value }))}
               required
+            />
+            <p className="field-hint">
+              Ниже — необязательно; если пусто, имя канала возьмётся из поля выше.
+            </p>
+            <input
+              placeholder="Название канала (youtubeChannelName)"
+              value={projectForm.youtubeChannelName}
+              onChange={(e) =>
+                setProjectForm((s) => ({ ...s, youtubeChannelName: e.target.value }))
+              }
+            />
+            <textarea
+              placeholder="Описание канала (youtubeChannelDescription)"
+              value={projectForm.youtubeChannelDescription}
+              onChange={(e) =>
+                setProjectForm((s) => ({ ...s, youtubeChannelDescription: e.target.value }))
+              }
+            />
+            <input
+              placeholder="Префикс видео (videoPrefix)"
+              value={projectForm.videoPrefix}
+              onChange={(e) =>
+                setProjectForm((s) => ({ ...s, videoPrefix: e.target.value }))
+              }
             />
             <input
               type="number"
@@ -400,6 +480,16 @@ function App() {
               }
               required
             />
+            <label className="form-row-check">
+              <input
+                type="checkbox"
+                checked={projectForm.enabled}
+                onChange={(e) =>
+                  setProjectForm((s) => ({ ...s, enabled: e.target.checked }))
+                }
+              />
+              Проект включён (участвует в выдаче задач командам)
+            </label>
             <button type="submit">Создать проект</button>
           </form>
 
@@ -455,6 +545,92 @@ function App() {
               })}
             </div>
           </div>
+
+          {selectedProjectId && projectEditForm && (
+            <form className="card full-width" onSubmit={saveProjectEdit}>
+              <h2>Редактировать проект</h2>
+              <input
+                placeholder="Название проекта"
+                value={projectEditForm.name}
+                onChange={(e) =>
+                  setProjectEditForm((s) => (s ? { ...s, name: e.target.value } : s))
+                }
+                required
+              />
+              <textarea
+                placeholder="Краткое описание"
+                value={projectEditForm.shortDescription}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, shortDescription: e.target.value } : s,
+                  )
+                }
+                required
+              />
+              <input
+                placeholder="Канал YouTube: ссылка, @handle или id (UC…)"
+                value={projectEditForm.youtubeChannel}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, youtubeChannel: e.target.value } : s,
+                  )
+                }
+                required
+              />
+              <input
+                placeholder="Название канала (youtubeChannelName)"
+                value={projectEditForm.youtubeChannelName}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, youtubeChannelName: e.target.value } : s,
+                  )
+                }
+              />
+              <textarea
+                placeholder="Описание канала (youtubeChannelDescription)"
+                value={projectEditForm.youtubeChannelDescription}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, youtubeChannelDescription: e.target.value } : s,
+                  )
+                }
+              />
+              <input
+                placeholder="Префикс видео (videoPrefix)"
+                value={projectEditForm.videoPrefix}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, videoPrefix: e.target.value } : s,
+                  )
+                }
+              />
+              <input
+                type="number"
+                min={1}
+                placeholder="Целевое число просмотров"
+                value={projectEditForm.targetViews}
+                onChange={(e) =>
+                  setProjectEditForm((s) =>
+                    s ? { ...s, targetViews: Number(e.target.value) } : s,
+                  )
+                }
+                required
+              />
+              <label className="form-row-check">
+                <input
+                  type="checkbox"
+                  checked={projectEditForm.enabled}
+                  onChange={(e) =>
+                    setProjectEditForm((s) =>
+                      s ? { ...s, enabled: e.target.checked } : s,
+                    )
+                  }
+                />
+                Проект включён
+              </label>
+              <button type="submit">Сохранить изменения</button>
+            </form>
+          )}
         </section>
       ) : page === 'videoStats' ? (
         <section className="grid one-col">

@@ -12,17 +12,18 @@ export class ProjectEntity {
   @Column({ type: 'text' })
   shortDescription: string;
 
+  /** Channel URL, @handle, or channel id (UC…); single source for imports and team API. */
   @Column()
   youtubeChannel: string;
-
-  @Column({ default: '' })
-  youtubeChannelUrl: string;
 
   @Column({ default: '' })
   youtubeChannelName: string;
 
   @Column({ type: 'text', default: '' })
   youtubeChannelDescription: string;
+
+  @Column({ default: '' })
+  videoPrefix: string;
 
   @Column({ type: 'int' })
   targetViews: number;

@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, IsNull, Or, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ProjectEntity } from '../../database/entities/project.entity';
 import { TeamWatchEntity } from '../../database/entities/team-watch.entity';
 import { VideoEntity } from '../../database/entities/video.entity';
 import { ConfigEntryEntity } from '../../database/entities/config-entry.entity';
+import { youtubeChannelToCanonicalUrl } from '../../common/youtube-channel.util';
 
 @Injectable()
 export class TeamsService {
@@ -27,7 +28,7 @@ export class TeamsService {
   async getNextVideo(clientIp: string, fallbackTeamApiKey?: string) {
     const resolvedTeamApiKey = this.buildTeamIdentity(clientIp, fallbackTeamApiKey);
     const projects = await this.projectsRepo.find({
-      where: [{ enabled: true }, { enabled: IsNull() }],
+      where: { enabled: true },
     });
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -79,10 +80,11 @@ export class TeamsService {
         tastId: taskId,
         taskId,
         youtubeVideoUrl: video.youtubeUrl,
-        youtubeChannelUrl: project.youtubeChannelUrl || project.youtubeChannel || '',
+        youtubeChannelUrl: youtubeChannelToCanonicalUrl(project.youtubeChannel || ''),
         youtubeChannelName: project.youtubeChannelName || project.youtubeChannel || '',
         youtubeChanngelDescription: project.youtubeChannelDescription || '',
         youtubeVideoDescription: video.youtubeVideoDescription || '',
+        videoPrefix: project.videoPrefix || '',
         config,
       };
     }

@@ -10,6 +10,7 @@ import { ProjectEntity } from '../../database/entities/project.entity';
 import { VideoEntity } from '../../database/entities/video.entity';
 import { TeamWatchEntity } from '../../database/entities/team-watch.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 
 @Injectable()
 export class ProjectsService {
@@ -25,10 +26,18 @@ export class ProjectsService {
   async createProject(dto: CreateProjectDto) {
     const channelMeta = await this.resolveChannelMeta(dto.youtubeChannel);
     const project = await this.projectsRepo.save({
-      ...dto,
-      youtubeChannelUrl: channelMeta.youtubeChannelUrl,
-      youtubeChannelName: channelMeta.youtubeChannelName,
-      youtubeChannelDescription: channelMeta.youtubeChannelDescription,
+      name: dto.name,
+      shortDescription: dto.shortDescription,
+      youtubeChannel: dto.youtubeChannel.trim(),
+      targetViews: dto.targetViews,
+      youtubeChannelName:
+        dto.youtubeChannelName?.trim() || channelMeta.youtubeChannelName,
+      youtubeChannelDescription:
+        dto.youtubeChannelDescription !== undefined
+          ? dto.youtubeChannelDescription
+          : channelMeta.youtubeChannelDescription,
+      videoPrefix: dto.videoPrefix?.trim() || '',
+      enabled: dto.enabled ?? true,
     });
     const videos = await this.fetchRecentChannelVideos(dto.youtubeChannel);
 
@@ -97,14 +106,23 @@ export class ProjectsService {
     };
   }
 
-  async updateProject(projectId: string, patch: { enabled?: boolean }) {
+  async updateProject(projectId: string, patch: UpdateProjectDto) {
     const project = await this.projectsRepo.findOne({ where: { id: projectId } });
     if (!project) {
       throw new NotFoundException('Project not found');
     }
-    if (typeof patch.enabled === 'boolean') {
-      project.enabled = patch.enabled;
+    if (patch.name !== undefined) project.name = patch.name;
+    if (patch.shortDescription !== undefined) project.shortDescription = patch.shortDescription;
+    if (patch.youtubeChannel !== undefined) {
+      project.youtubeChannel = patch.youtubeChannel.trim();
     }
+    if (patch.targetViews !== undefined) project.targetViews = patch.targetViews;
+    if (patch.youtubeChannelName !== undefined) project.youtubeChannelName = patch.youtubeChannelName;
+    if (patch.youtubeChannelDescription !== undefined) {
+      project.youtubeChannelDescription = patch.youtubeChannelDescription;
+    }
+    if (patch.videoPrefix !== undefined) project.videoPrefix = patch.videoPrefix.trim();
+    if (typeof patch.enabled === 'boolean') project.enabled = patch.enabled;
     return this.projectsRepo.save(project);
   }
 
@@ -592,26 +610,8 @@ export class ProjectsService {
     return result;
   }
 
-  private buildChannelUrl(channelInput: string) {
-    const value = channelInput.trim();
-    if (!value) {
-      return '';
-    }
-    if (value.startsWith('http://') || value.startsWith('https://')) {
-      return value;
-    }
-    if (value.startsWith('@')) {
-      return `https://www.youtube.com/${value}`;
-    }
-    if (/^UC[a-zA-Z0-9_-]{22}$/.test(value)) {
-      return `https://www.youtube.com/channel/${value}`;
-    }
-    return value;
-  }
-
   private async resolveChannelMeta(channelInput: string) {
     return {
-      youtubeChannelUrl: this.buildChannelUrl(channelInput),
       youtubeChannelName: channelInput.trim(),
       youtubeChannelDescription: '',
     };
