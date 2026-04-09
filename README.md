@@ -86,3 +86,8 @@ docker compose --env-file .env.production up -d --build
 3. Services:
 - Admin: `http://localhost:8080`
 - API: `http://localhost:3000`
+
+If admin is opened as `http://YOUR_IP:8080`, the SPA calls the API at `http://YOUR_IP:3000` automatically (unless you set `VITE_API_URL` at **admin** image build time).
+
+cp .env.production.example .env.production
+docker compose --env-file .env.production up -d --build

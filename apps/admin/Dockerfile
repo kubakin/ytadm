@@ -1,7 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-ARG VITE_API_URL=http://localhost:3000
+# Omit or leave empty so the SPA uses same host + :3000 in the browser (see getApiBaseUrl in App.tsx).
+ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
 COPY package.json package-lock.json ./

@@ -2,7 +2,23 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+/** API base: env wins; dev defaults to localhost; prod build uses same host + port 3000 (typical docker split 8080/3000). */
+function getApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:3000';
+  }
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3000`;
+  }
+  return 'http://localhost:3000';
+}
+
+const API_URL = getApiBaseUrl();
 
 type Project = {
   id: string;

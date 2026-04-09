@@ -40,7 +40,7 @@ services:
       context: .
       dockerfile: apps/admin/Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_API_URL: ${VITE_API_URL:-}
     container_name: yt_admin_admin
     restart: unless-stopped
     depends_on:
