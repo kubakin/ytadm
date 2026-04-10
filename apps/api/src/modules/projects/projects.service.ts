@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProjectEntity } from '../../database/entities/project.entity';
+import { ThemeEntity } from '../../database/entities/theme.entity';
 import { VideoEntity } from '../../database/entities/video.entity';
 import { TeamWatchEntity } from '../../database/entities/team-watch.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -17,6 +18,8 @@ export class ProjectsService {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectsRepo: Repository<ProjectEntity>,
+    @InjectRepository(ThemeEntity)
+    private readonly themesRepo: Repository<ThemeEntity>,
     @InjectRepository(VideoEntity)
     private readonly videosRepo: Repository<VideoEntity>,
     @InjectRepository(TeamWatchEntity)
@@ -24,6 +27,7 @@ export class ProjectsService {
   ) {}
 
   async createProject(dto: CreateProjectDto) {
+    await this.ensureThemeExists(dto.themeId);
     const channelMeta = await this.resolveChannelMeta(dto.youtubeChannel);
     const project = await this.projectsRepo.save({
       name: dto.name,
@@ -37,6 +41,7 @@ export class ProjectsService {
           ? dto.youtubeChannelDescription
           : channelMeta.youtubeChannelDescription,
       videoPrefix: dto.videoPrefix?.trim() || '',
+      themeId: dto.themeId,
       enabled: dto.enabled ?? true,
     });
     const videos = await this.fetchRecentChannelVideos(dto.youtubeChannel);
@@ -58,7 +63,7 @@ export class ProjectsService {
 
   async listProjects() {
     const projects = await this.projectsRepo.find({
-      relations: { videos: true },
+      relations: { videos: true, theme: true },
       order: { name: 'ASC' },
     });
     const stats = await this.viewsRepo
@@ -117,6 +122,10 @@ export class ProjectsService {
       project.youtubeChannel = patch.youtubeChannel.trim();
     }
     if (patch.targetViews !== undefined) project.targetViews = patch.targetViews;
+    if (patch.themeId !== undefined) {
+      await this.ensureThemeExists(patch.themeId);
+      project.themeId = patch.themeId;
+    }
     if (patch.youtubeChannelName !== undefined) project.youtubeChannelName = patch.youtubeChannelName;
     if (patch.youtubeChannelDescription !== undefined) {
       project.youtubeChannelDescription = patch.youtubeChannelDescription;
@@ -124,6 +133,13 @@ export class ProjectsService {
     if (patch.videoPrefix !== undefined) project.videoPrefix = patch.videoPrefix.trim();
     if (typeof patch.enabled === 'boolean') project.enabled = patch.enabled;
     return this.projectsRepo.save(project);
+  }
+
+  private async ensureThemeExists(themeId: string) {
+    const theme = await this.themesRepo.findOne({ where: { id: themeId } });
+    if (!theme) {
+      throw new NotFoundException('Theme not found');
+    }
   }
 
   async deleteProject(projectId: string) {

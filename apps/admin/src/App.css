@@ -188,6 +188,25 @@ button {
   gap: 8px;
 }
 
+.inline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 8px 2px 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #3a4671;
+  background: #1a213b;
+}
+
+.chip-remove {
+  background: transparent;
+  border: none;
+  color: #ffb1b1;
+  padding: 0;
+  line-height: 1;
+}
+
 .danger {
   background: linear-gradient(120deg, #8f2a48, #b83b5d);
 }

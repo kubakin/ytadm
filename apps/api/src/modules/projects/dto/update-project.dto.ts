@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class UpdateProjectDto {
   @IsOptional()
@@ -17,6 +17,10 @@ export class UpdateProjectDto {
   @IsInt()
   @Min(1)
   targetViews?: number;
+
+  @IsOptional()
+  @IsUUID()
+  themeId?: string;
 
   @IsOptional()
   @IsString()

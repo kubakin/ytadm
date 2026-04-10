@@ -6,6 +6,8 @@ import { ProjectEntity } from '../../database/entities/project.entity';
 import { TeamWatchEntity } from '../../database/entities/team-watch.entity';
 import { VideoEntity } from '../../database/entities/video.entity';
 import { ConfigEntryEntity } from '../../database/entities/config-entry.entity';
+import { ThemeEntity } from '../../database/entities/theme.entity';
+import { TeamThemeKnowledgeEntity } from '../../database/entities/team-theme-knowledge.entity';
 import { youtubeChannelToCanonicalUrl } from '../../common/youtube-channel.util';
 
 @Injectable()
@@ -19,6 +21,10 @@ export class TeamsService {
     private readonly viewsRepo: Repository<TeamWatchEntity>,
     @InjectRepository(ConfigEntryEntity)
     private readonly configRepo: Repository<ConfigEntryEntity>,
+    @InjectRepository(ThemeEntity)
+    private readonly themesRepo: Repository<ThemeEntity>,
+    @InjectRepository(TeamThemeKnowledgeEntity)
+    private readonly knowledgeRepo: Repository<TeamThemeKnowledgeEntity>,
   ) {}
 
   registerTeam() {
@@ -27,11 +33,51 @@ export class TeamsService {
 
   async getNextVideo(clientIp: string, fallbackTeamApiKey?: string) {
     const resolvedTeamApiKey = this.buildTeamIdentity(clientIp, fallbackTeamApiKey);
-    const projects = await this.projectsRepo.find({
-      where: { enabled: true },
-    });
+    const teamIp = this.normalizeClientIp(clientIp);
+    const projects = await this.projectsRepo.find({ where: { enabled: true }, relations: { theme: true } });
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const knownThemeIds = new Set(
+      (await this.knowledgeRepo.find({ where: { teamIp } })).map((item) => item.themeId),
+    );
+    const knownThemeProjects = projects.filter(
+      (project) => !!project.themeId && knownThemeIds.has(project.themeId),
+    );
+    const newThemeProjects = projects.filter(
+      (project) => !!project.themeId && !knownThemeIds.has(project.themeId),
+    );
 
+    const ownTask = await this.pickTaskForProjectList(
+      knownThemeProjects,
+      resolvedTeamApiKey,
+      oneDayAgo,
+      true,
+    );
+    if (ownTask) {
+      return ownTask;
+    }
+
+    const learningTask = await this.pickTaskForProjectList(
+      newThemeProjects,
+      resolvedTeamApiKey,
+      oneDayAgo,
+      false,
+    );
+    if (learningTask) {
+      if (learningTask.themeId && !knownThemeIds.has(learningTask.themeId)) {
+        await this.knowledgeRepo.save({ teamIp, themeId: learningTask.themeId });
+      }
+      return learningTask;
+    }
+
+    return { hasTask: false, teamApiKey: resolvedTeamApiKey };
+  }
+
+  private async pickTaskForProjectList(
+    projects: ProjectEntity[],
+    resolvedTeamApiKey: string,
+    oneDayAgo: Date,
+    assignTask: boolean,
+  ) {
     for (const project of projects) {
       const completedViews = await this.viewsRepo.count({
         where: { projectId: project.id, status: 'completed' },
@@ -61,9 +107,23 @@ export class TeamsService {
       if (!video) {
         continue;
       }
-
       const configRows = await this.configRepo.find();
-      const config = Object.fromEntries(configRows.map((item) => [item.key, item.value]));
+      const config = this.normalizeRuntimeConfig(
+        Object.fromEntries(configRows.map((item) => [item.key, item.value])),
+      );
+      if (!assignTask) {
+        return {
+          type: 'test' as const,
+          theme: project.theme?.name || '',
+          keywords: project.theme?.keywords || [],
+          vkGroup: project.theme?.vkGroup || '',
+          landingUrl: project.theme?.landingUrl || '',
+          themeId: project.themeId,
+          config
+        };
+      }
+
+      
 
       const taskId = randomUUID();
       await this.viewsRepo.save({
@@ -76,6 +136,8 @@ export class TeamsService {
 
       return {
         hasTask: true,
+        theme: project.theme?.name || '',
+        keywords: project.theme?.keywords || [],
         teamApiKey: resolvedTeamApiKey,
         tastId: taskId,
         taskId,
@@ -85,11 +147,12 @@ export class TeamsService {
         youtubeChanngelDescription: project.youtubeChannelDescription || '',
         youtubeVideoDescription: video.youtubeVideoDescription || '',
         videoPrefix: project.videoPrefix || '',
+        vkGroup: project.theme?.vkGroup || '',
+        landingUrl: project.theme?.landingUrl || '',
         config,
       };
     }
-
-    return { hasTask: false, teamApiKey: resolvedTeamApiKey };
+    return null;
   }
 
   async reportTaskStatus(taskId: string, status: string, clientIp: string) {
@@ -146,11 +209,82 @@ export class TeamsService {
     }));
   }
 
+  async removeCurrentTask(taskId: string) {
+    const task = await this.viewsRepo.findOne({ where: { taskId } });
+    if (!task) {
+      return { deleted: false, reason: 'Task not found' };
+    }
+    await this.viewsRepo.remove(task);
+    return { deleted: true, taskId };
+  }
+
+  async getTeamKnowledgeOverview() {
+    const [themes, knownRows, teamViewRows] = await Promise.all([
+      this.themesRepo.find(),
+      this.knowledgeRepo.find(),
+      this.viewsRepo.find({ select: { teamApiKey: true } }),
+    ]);
+    const themeMap = new Map(themes.map((theme) => [theme.id, theme]));
+    const byIp = new Map<
+      string,
+      { teamIp: string; knownThemes: Array<{ id: string; name: string }> }
+    >();
+    const ensureRow = (teamIp: string) => {
+      if (!byIp.has(teamIp)) {
+        byIp.set(teamIp, { teamIp, knownThemes: [] });
+      }
+      return byIp.get(teamIp)!;
+    };
+
+    for (const item of knownRows) {
+      const theme = themeMap.get(item.themeId);
+      if (!theme) continue;
+      ensureRow(item.teamIp).knownThemes.push({ id: theme.id, name: theme.name });
+    }
+    for (const row of teamViewRows) {
+      const teamIp = this.teamApiKeyToIp(row.teamApiKey);
+      if (teamIp) {
+        ensureRow(teamIp);
+      }
+    }
+
+    return Array.from(byIp.values()).sort((a, b) => a.teamIp.localeCompare(b.teamIp));
+  }
+
+  async removeTeamKnowledge(teamIp: string, themeId: string) {
+    const normalizedIp = this.normalizeClientIp(teamIp);
+    await this.knowledgeRepo.delete({ teamIp: normalizedIp, themeId });
+    return { deleted: true };
+  }
+
   private buildTeamIdentity(clientIp?: string, fallbackTeamApiKey?: string) {
-    const ip = clientIp?.trim();
+    const ip = this.normalizeClientIp(clientIp);
     if (ip) {
       return `ip:${ip}`;
     }
     return fallbackTeamApiKey?.trim() || `guest-${randomUUID()}`;
+  }
+
+  private normalizeClientIp(clientIp?: string) {
+    return clientIp?.trim() || '';
+  }
+
+  private teamApiKeyToIp(teamApiKey: string) {
+    if (!teamApiKey.startsWith('ip:')) {
+      return '';
+    }
+    return teamApiKey.slice(3).trim();
+  }
+
+  private normalizeRuntimeConfig(rawConfig: Record<string, string>) {
+    const config = { ...rawConfig };
+    const legacyVariants = config.variants || config.VARIANTS;
+    if (!config.strategies && !config.STRATEGIES && legacyVariants) {
+      config.strategies = legacyVariants;
+    }
+    if (!config.strategies && !config.STRATEGIES) {
+      config.strategies = 'classicStrategy,vkStrategy';
+    }
+    return config;
   }
 }

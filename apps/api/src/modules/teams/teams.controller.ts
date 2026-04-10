@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Query,
   Req,
@@ -10,6 +12,7 @@ import {
 import type { Request } from 'express';
 import { TeamsService } from './teams.service';
 import { TeamReportDto } from './dto/team-report.dto';
+import { RemoveTeamKnowledgeDto } from './dto/remove-team-knowledge.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('team')
@@ -45,6 +48,24 @@ export class TeamsController {
   @UseGuards(JwtAuthGuard)
   currentTasks() {
     return this.teamsService.getCurrentTasks();
+  }
+
+  @Delete('admin/tasks/current/:taskId')
+  @UseGuards(JwtAuthGuard)
+  removeCurrentTask(@Param('taskId') taskId: string) {
+    return this.teamsService.removeCurrentTask(taskId);
+  }
+
+  @Get('admin/teams/knowledge')
+  @UseGuards(JwtAuthGuard)
+  teamKnowledge() {
+    return this.teamsService.getTeamKnowledgeOverview();
+  }
+
+  @Delete('admin/teams/knowledge')
+  @UseGuards(JwtAuthGuard)
+  removeTeamKnowledge(@Body() dto: RemoveTeamKnowledgeDto) {
+    return this.teamsService.removeTeamKnowledge(dto.teamIp, dto.themeId);
   }
 
   private extractClientIp(req: Request): string {

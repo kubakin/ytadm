@@ -6,6 +6,7 @@ import { join } from 'path';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { ConfigsModule } from './modules/configs/configs.module';
+import { ThemesModule } from './modules/themes/themes.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ConfigsModule } from './modules/configs/configs.module';
     ProjectsModule,
     TeamsModule,
     ConfigsModule,
+    ThemesModule,
   ],
 })
 export class AppModule {}

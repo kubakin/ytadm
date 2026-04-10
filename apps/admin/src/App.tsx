@@ -29,6 +29,8 @@ type Project = {
   youtubeChannelDescription?: string;
   videoPrefix?: string;
   targetViews: number;
+  themeId: string;
+  theme?: Theme;
   completedViews: number;
   enabled?: boolean;
   videos: { id: string; title: string; youtubeUrl: string }[];
@@ -39,6 +41,7 @@ type ProjectFormFields = {
   shortDescription: string;
   youtubeChannel: string;
   targetViews: number;
+  themeId: string;
   youtubeChannelName: string;
   youtubeChannelDescription: string;
   videoPrefix: string;
@@ -50,6 +53,7 @@ const emptyProjectForm = (): ProjectFormFields => ({
   shortDescription: '',
   youtubeChannel: '',
   targetViews: 100,
+  themeId: '',
   youtubeChannelName: '',
   youtubeChannelDescription: '',
   videoPrefix: '',
@@ -62,6 +66,7 @@ function projectToFormFields(p: Project): ProjectFormFields {
     shortDescription: p.shortDescription,
     youtubeChannel: p.youtubeChannel,
     targetViews: p.targetViews,
+    themeId: p.themeId,
     youtubeChannelName: p.youtubeChannelName ?? '',
     youtubeChannelDescription: p.youtubeChannelDescription ?? '',
     videoPrefix: p.videoPrefix ?? '',
@@ -88,6 +93,27 @@ type ConfigEntry = {
   description: string | null;
 };
 
+type Theme = {
+  id: string;
+  name: string;
+  keywords: string[];
+  vkGroup?: string;
+  landingUrl?: string;
+};
+
+type ThemeEditRow = {
+  id: string;
+  name: string;
+  keywordsText: string;
+  vkGroup: string;
+  landingUrl: string;
+};
+
+type TeamKnowledgeRow = {
+  teamIp: string;
+  knownThemes: Array<{ id: string; name: string }>;
+};
+
 type CurrentTask = {
   taskId: string;
   teamApiKey: string;
@@ -100,13 +126,24 @@ type CurrentTask = {
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [page, setPage] = useState<'projects' | 'videoStats' | 'config' | 'tasks'>('projects');
+  const [page, setPage] = useState<'projects' | 'videoStats' | 'config' | 'tasks' | 'themes'>(
+    'projects',
+  );
   const [email, setEmail] = useState('admin@local.dev');
   const [password, setPassword] = useState('admin123');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projectForm, setProjectForm] = useState<ProjectFormFields>(emptyProjectForm);
   const [projectEditForm, setProjectEditForm] = useState<ProjectFormFields | null>(null);
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [themeEdits, setThemeEdits] = useState<ThemeEditRow[]>([]);
+  const [themeForm, setThemeForm] = useState({
+    name: '',
+    keywordsText: '',
+    vkGroup: '',
+    landingUrl: '',
+  });
+  const [teamKnowledgeRows, setTeamKnowledgeRows] = useState<TeamKnowledgeRow[]>([]);
   const [videoStats, setVideoStats] = useState<VideoStat[]>([]);
   const [statsProjectName, setStatsProjectName] = useState('');
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
@@ -132,8 +169,41 @@ function App() {
     }
   };
 
+  const loadThemes = async () => {
+    if (!token) return;
+    const response = await fetch(`${API_URL}/admin/themes`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    const data = (await response.json()) as Theme[];
+    setThemes(data);
+    setThemeEdits(
+      data.map((theme) => ({
+        id: theme.id,
+        name: theme.name,
+        keywordsText: theme.keywords.join(', '),
+        vkGroup: theme.vkGroup ?? '',
+        landingUrl: theme.landingUrl ?? '',
+      })),
+    );
+  };
+
+  const loadTeamKnowledge = async () => {
+    if (!token) return;
+    const response = await fetch(`${API_URL}/team/admin/teams/knowledge`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    const data = (await response.json()) as TeamKnowledgeRow[];
+    setTeamKnowledgeRows(data);
+  };
+
   useEffect(() => {
     void loadProjects();
+  }, [token]);
+
+  useEffect(() => {
+    void loadThemes();
   }, [token]);
 
   useEffect(() => {
@@ -184,6 +254,14 @@ function App() {
       setConfigs(data);
     };
     void loadConfigs();
+  }, [token, page]);
+
+  useEffect(() => {
+    if (page !== 'themes') {
+      return;
+    }
+    void loadThemes();
+    void loadTeamKnowledge();
   }, [token, page]);
 
   useEffect(() => {
@@ -356,6 +434,86 @@ function App() {
     setSuccessMessage('Все изменения успешно сохранены');
   };
 
+  const createTheme = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token) return;
+    const keywords = themeForm.keywordsText
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    await fetch(`${API_URL}/admin/themes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: themeForm.name,
+        keywords,
+        vkGroup: themeForm.vkGroup,
+        landingUrl: themeForm.landingUrl,
+      }),
+    });
+    setThemeForm({ name: '', keywordsText: '', vkGroup: '', landingUrl: '' });
+    await loadThemes();
+    setSuccessMessage('Тематика создана');
+  };
+
+  const saveTheme = async (themeId: string) => {
+    if (!token) return;
+    const row = themeEdits.find((item) => item.id === themeId);
+    if (!row) return;
+    const keywords = row.keywordsText
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    await fetch(`${API_URL}/admin/themes/${themeId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: row.name,
+        keywords,
+        vkGroup: row.vkGroup,
+        landingUrl: row.landingUrl,
+      }),
+    });
+    await loadThemes();
+    setSuccessMessage('Тематика сохранена');
+  };
+
+  const removeTeamKnowledge = async (teamIp: string, themeId: string) => {
+    if (!token) return;
+    await fetch(`${API_URL}/team/admin/teams/knowledge`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ teamIp, themeId }),
+    });
+    await loadTeamKnowledge();
+    setSuccessMessage('Знание тематики удалено');
+  };
+
+  const removeCurrentTask = async (taskId: string) => {
+    if (!token) return;
+    await fetch(`${API_URL}/team/admin/tasks/current/${taskId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const response = await fetch(`${API_URL}/team/admin/tasks/current`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const data = (await response.json()) as CurrentTask[];
+      setCurrentTasks(data);
+    }
+    setSuccessMessage('Задача удалена');
+  };
+
   useEffect(() => {
     if (!successMessage) return;
     const timer = setTimeout(() => setSuccessMessage(''), 2200);
@@ -410,6 +568,12 @@ function App() {
             onClick={() => setPage('tasks')}
           >
             ЗАДАЧИ
+          </button>
+          <button
+            className={page === 'themes' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setPage('themes')}
+          >
+            ТЕМАТИКИ
           </button>
           <button
             onClick={() => {
@@ -480,6 +644,18 @@ function App() {
               }
               required
             />
+            <select
+              value={projectForm.themeId}
+              onChange={(e) => setProjectForm((s) => ({ ...s, themeId: e.target.value }))}
+              required
+            >
+              <option value="">Выберите тематику</option>
+              {themes.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
+              ))}
+            </select>
             <label className="form-row-check">
               <input
                 type="checkbox"
@@ -515,6 +691,7 @@ function App() {
                       <small>
                         Прогресс: {project.completedViews} / {project.targetViews}
                       </small>
+                      <small>Тематика: {project.theme?.name ?? 'Не выбрана'}</small>
                       <small>Видео: {project.videos.length}</small>
                       {!isOn && <small className="badge-off">Отключён</small>}
                     </button>
@@ -616,6 +793,20 @@ function App() {
                 }
                 required
               />
+              <select
+                value={projectEditForm.themeId}
+                onChange={(e) =>
+                  setProjectEditForm((s) => (s ? { ...s, themeId: e.target.value } : s))
+                }
+                required
+              >
+                <option value="">Выберите тематику</option>
+                {themes.map((theme) => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
+                ))}
+              </select>
               <label className="form-row-check">
                 <input
                   type="checkbox"
@@ -776,6 +967,159 @@ function App() {
             </table>
           </div>
         </section>
+      ) : page === 'themes' ? (
+        <section className="grid two-cols">
+          <form className="card" onSubmit={createTheme}>
+            <h2>Новая тематика</h2>
+            <input
+              placeholder="Название тематики"
+              value={themeForm.name}
+              onChange={(e) => setThemeForm((s) => ({ ...s, name: e.target.value }))}
+              required
+            />
+            <textarea
+              placeholder="Ключевые слова через запятую"
+              value={themeForm.keywordsText}
+              onChange={(e) => setThemeForm((s) => ({ ...s, keywordsText: e.target.value }))}
+            />
+            <input
+              placeholder="VK группа (опционально)"
+              value={themeForm.vkGroup}
+              onChange={(e) => setThemeForm((s) => ({ ...s, vkGroup: e.target.value }))}
+            />
+            <input
+              placeholder="Landing URL (опционально)"
+              value={themeForm.landingUrl}
+              onChange={(e) => setThemeForm((s) => ({ ...s, landingUrl: e.target.value }))}
+            />
+            <button type="submit">Создать тематику</button>
+          </form>
+          <div className="card">
+            <h2>Тематики</h2>
+            <table className="stats-table">
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Ключевые слова</th>
+                  <th>VK группа</th>
+                  <th>Landing URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {themes.map((theme) => (
+                  <tr key={theme.id}>
+                    <td>
+                      <input
+                        value={themeEdits.find((row) => row.id === theme.id)?.name ?? theme.name}
+                        onChange={(e) =>
+                          setThemeEdits((prev) =>
+                            prev.map((row) =>
+                              row.id === theme.id ? { ...row, name: e.target.value } : row,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <textarea
+                        value={
+                          themeEdits.find((row) => row.id === theme.id)?.keywordsText ??
+                          theme.keywords.join(', ')
+                        }
+                        onChange={(e) =>
+                          setThemeEdits((prev) =>
+                            prev.map((row) =>
+                              row.id === theme.id
+                                ? { ...row, keywordsText: e.target.value }
+                                : row,
+                            ),
+                          )
+                        }
+                      />
+                      <div className="actions">
+                        <button type="button" onClick={() => saveTheme(theme.id)}>
+                          Сохранить
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        value={themeEdits.find((row) => row.id === theme.id)?.vkGroup ?? ''}
+                        onChange={(e) =>
+                          setThemeEdits((prev) =>
+                            prev.map((row) =>
+                              row.id === theme.id ? { ...row, vkGroup: e.target.value } : row,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={themeEdits.find((row) => row.id === theme.id)?.landingUrl ?? ''}
+                        onChange={(e) =>
+                          setThemeEdits((prev) =>
+                            prev.map((row) =>
+                              row.id === theme.id ? { ...row, landingUrl: e.target.value } : row,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {themes.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="muted">
+                      Тематики пока не созданы
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="card full-width">
+            <h2>Команды (IP) и изученные тематики</h2>
+            <table className="stats-table">
+              <thead>
+                <tr>
+                  <th>IP команды</th>
+                  <th>Изученные тематики</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamKnowledgeRows.map((row) => (
+                  <tr key={row.teamIp}>
+                    <td>{row.teamIp}</td>
+                    <td>
+                      {row.knownThemes.length === 0
+                        ? '—'
+                        : row.knownThemes.map((theme) => (
+                            <span key={theme.id} className="inline-chip">
+                              {theme.name}
+                              <button
+                                type="button"
+                                className="chip-remove"
+                                onClick={() => removeTeamKnowledge(row.teamIp, theme.id)}
+                              >
+                                x
+                              </button>
+                            </span>
+                          ))}
+                    </td>
+                  </tr>
+                ))}
+                {teamKnowledgeRows.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="muted">
+                      Команды пока не зарегистрированы
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <section className="grid one-col">
           <div className="card">
@@ -789,6 +1133,7 @@ function App() {
                   <th>Проект</th>
                   <th>Видео</th>
                   <th>Обновлено</th>
+                  <th>Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -804,11 +1149,20 @@ function App() {
                       </a>
                     </td>
                     <td>{new Date(task.updatedAt).toLocaleString()}</td>
+                    <td className="actions">
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => removeCurrentTask(task.taskId)}
+                      >
+                        Удалить
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {currentTasks.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted">
+                    <td colSpan={7} className="muted">
                       Нет задач в статусах prepare/process
                     </td>
                   </tr>

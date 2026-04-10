@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -13,6 +13,9 @@ export class CreateProjectDto {
   @IsInt()
   @Min(1)
   targetViews: number;
+
+  @IsUUID()
+  themeId: string;
 
   @IsOptional()
   @IsString()

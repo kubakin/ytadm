@@ -87,6 +87,22 @@ export const DEFAULT_CONFIGS: Array<{
   },
   { key: 'VIDEO_FIND_TIMEOUT_MS_MIN', value: '15000', description: 'Video find timeout min' },
   { key: 'VIDEO_FIND_TIMEOUT_MS_MAX', value: '20000', description: 'Video find timeout max' },
+  {
+    key: 'STRATEGIES',
+    value: 'classicStrategy,vkStrategy',
+    description: 'Stage2 strategies list (comma separated)',
+  },
+  {
+    key: 'DEFAULT_STRATEGY',
+    value: 'classicStrategy',
+    description: 'Fallback strategy if not selected',
+  },
+  {
+    key: 'VK_STRATEGY_FLOW',
+    value:
+      'open vkGroup; scroll down; hover random elements; find any link; set href to youtubeVideoUrl; click; continue normal watch flow',
+    description: 'Human-readable vkStrategy flow for nutjs runner',
+  },
   { key: 'POST_LOAD_MS_MIN', value: '1000', description: 'Post-load delay min' },
   { key: 'POST_LOAD_MS_MAX', value: '3000', description: 'Post-load delay max' },
 ];
