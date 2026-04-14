@@ -33,6 +33,27 @@ export class TeamsService {
 
   async getNextVideo(clientIp: string, fallbackTeamApiKey?: string) {
     const resolvedTeamApiKey = this.buildTeamIdentity(clientIp, fallbackTeamApiKey);
+    const activePrepareTask = await this.viewsRepo.findOne({
+      where: { teamApiKey: resolvedTeamApiKey, status: 'prepare' },
+      order: { updatedAt: 'DESC' },
+    });
+    if (activePrepareTask?.taskId) {
+      const [project, video, configRows] = await Promise.all([
+        this.projectsRepo.findOne({
+          where: { id: activePrepareTask.projectId },
+          relations: { theme: true },
+        }),
+        this.videosRepo.findOne({ where: { id: activePrepareTask.videoId } }),
+        this.configRepo.find(),
+      ]);
+      if (project && video) {
+        const config = this.normalizeRuntimeConfig(
+          Object.fromEntries(configRows.map((item) => [item.key, item.value])),
+        );
+        return this.buildAssignedTaskResponse(project, video, resolvedTeamApiKey, activePrepareTask.taskId, config);
+      }
+    }
+
     const teamIp = this.normalizeClientIp(clientIp);
     const projects = await this.projectsRepo.find({ where: { enabled: true }, relations: { theme: true } });
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -63,7 +84,7 @@ export class TeamsService {
       false,
     );
     if (learningTask) {
-      if (learningTask.themeId && !knownThemeIds.has(learningTask.themeId)) {
+      if ('themeId' in learningTask && learningTask.themeId && !knownThemeIds.has(learningTask.themeId)) {
         await this.knowledgeRepo.save({ teamIp, themeId: learningTask.themeId });
       }
       return learningTask;
@@ -119,11 +140,9 @@ export class TeamsService {
           vkGroup: project.theme?.vkGroup || '',
           landingUrl: project.theme?.landingUrl || '',
           themeId: project.themeId,
-          config
+          config,
         };
       }
-
-      
 
       const taskId = randomUUID();
       await this.viewsRepo.save({
@@ -134,23 +153,7 @@ export class TeamsService {
         status: 'prepare',
       });
 
-      return {
-        hasTask: true,
-        theme: project.theme?.name || '',
-        keywords: project.theme?.keywords || [],
-        teamApiKey: resolvedTeamApiKey,
-        tastId: taskId,
-        taskId,
-        youtubeVideoUrl: video.youtubeUrl,
-        youtubeChannelUrl: youtubeChannelToCanonicalUrl(project.youtubeChannel || ''),
-        youtubeChannelName: project.youtubeChannelName || project.youtubeChannel || '',
-        youtubeChanngelDescription: project.youtubeChannelDescription || '',
-        youtubeVideoDescription: video.youtubeVideoDescription || '',
-        videoPrefix: project.videoPrefix || '',
-        vkGroup: project.theme?.vkGroup || '',
-        landingUrl: project.theme?.landingUrl || '',
-        config,
-      };
+      return this.buildAssignedTaskResponse(project, video, resolvedTeamApiKey, taskId, config);
     }
     return null;
   }
@@ -286,5 +289,31 @@ export class TeamsService {
       config.strategies = 'classicStrategy,vkStrategy';
     }
     return config;
+  }
+
+  private buildAssignedTaskResponse(
+    project: ProjectEntity,
+    video: VideoEntity,
+    resolvedTeamApiKey: string,
+    taskId: string,
+    config: Record<string, string>,
+  ) {
+    return {
+      hasTask: true,
+      theme: project.theme?.name || '',
+      keywords: project.theme?.keywords || [],
+      teamApiKey: resolvedTeamApiKey,
+      tastId: taskId,
+      taskId,
+      youtubeVideoUrl: video.youtubeUrl,
+      youtubeChannelUrl: youtubeChannelToCanonicalUrl(project.youtubeChannel || ''),
+      youtubeChannelName: project.youtubeChannelName || project.youtubeChannel || '',
+      youtubeChanngelDescription: project.youtubeChannelDescription || '',
+      youtubeVideoDescription: video.youtubeVideoDescription || '',
+      videoPrefix: project.videoPrefix || '',
+      vkGroup: project.theme?.vkGroup || '',
+      landingUrl: project.theme?.landingUrl || '',
+      config,
+    };
   }
 }
